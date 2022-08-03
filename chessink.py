@@ -19,9 +19,9 @@ import traceback
 
 logging.basicConfig(level=logging.DEBUG)
 
-msg = '____'
-msgt = msg
-msgi = 0
+move = [0,0,0,0]
+movet = None
+movei = 0
 mutex = Lock()
 def on_button_a_pressed():
     on_button_pressed('a')
@@ -33,35 +33,39 @@ def on_button_c_pressed():
 def on_button_pressed(id):
     global mutex
     if mutex.acquire(False):
-        global msg
-        global msgi
-        msg, msgi = process_button(msg, msgi, id)
+        process_button_move(id)
         time.sleep(0.15) # "pressed" triggers multiple events for more than 0.1s
         mutex.release()
-
-def process_button(msg, msgi, button):
-    aux = list(msg)
-    if button == 'a':
-        if aux[msgi] == '_':
-            aux[msgi] = 'a' if msgi % 2 == 0 else '1'
-        else:
-            aux[msgi] = chr(ord(aux[msgi]) + 1)
-    if button == 'b':
-        if aux[msgi] == '_':
-            aux[msgi] = 'd' if msgi % 2 == 0 else '4'
-        else:
-            aux[msgi] = chr(ord(aux[msgi]) + 4)
+def process_button_move(button):
+    global move
+    global movei
     if button == 'c':
-        msgi += 1
-    return ''.join(aux), msgi
-
+        if move[movei] != 0:
+            movei += 1
+    else:
+        incr = 1 if button == 'a' else 4
+        move[movei] = (move[movei] + incr) % 9
 def changed():
-    global msg
-    global msgt
-    res = (msg != msgt)
+    global move
+    global movet
+    logging.info(f"hello5 {move} {movet}")
+    res = (move != movet)
     if res:
-        msgt = msg
+        movet = move.copy()
     return res
+
+
+def move2str(move): # e.g. 4244 -> d2d4
+    aux = [0,0,0,0]
+    for i, x in enumerate(move):
+        if x == 0:
+            aux[i] = '_'
+        else:
+            if i % 2 == 0:
+                aux[i] = chr(ord('a')+x-1)
+            else:
+                aux[i] = x
+    return ''.join(str(x) for x in aux)
 
 try:
     logging.info("epd1in54_V2 Demo")
@@ -88,9 +92,14 @@ try:
     button_b.when_pressed = on_button_b_pressed
     button_c.when_pressed = on_button_c_pressed
     while (True):
+        if movei == 4:
+            logging.info("move: %s" % move)
+            move = [0,0,0,0]
+            movei = 0
         if changed():
+            logging.info("drawing changes")
             time_draw.rectangle((10, 10, 120, 50), fill = 255)
-            time_draw.text((10, 10), msg, font = font, fill = 0)
+            time_draw.text((10, 10), move2str(move), font = font, fill = 0)
             epd.displayPart(epd.getbuffer(time_image))
         else:
             logging.info("no changes, sleep...")
