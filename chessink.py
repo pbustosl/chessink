@@ -113,17 +113,26 @@ try:
     while (True):
         if movei == 4:
             logging.info(f"black move: {move2str(move)}")
-            try:
-                board_fen, cs_move = cs_play(board_fen, move2str(move))
+            if move2str(move) == 'a1a1':
+                logging.info("reset game")
                 move = [0,0,0,0]
+                movet = None
                 movei = 0
+                board_fen = cs_start_board()
                 chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
-                chess_draw.text((10, 50), f"b: {cs_move}", font = font, fill = 0)
                 epd.displayPart(epd.getbuffer(chess_image))
-            except Exception as e:
-                move = [0,0,0,0]
-                movei = 0
-                logging.error(e)
+            else:
+                try:
+                    board_fen, cs_move = cs_play(board_fen, move2str(move))
+                    move = [0,0,0,0]
+                    movei = 0
+                    chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
+                    chess_draw.text((10, 50), f"b: {cs_move}", font = font, fill = 0)
+                    epd.displayPart(epd.getbuffer(chess_image))
+                except Exception as e:
+                    move = [0,0,0,0]
+                    movei = 0
+                    logging.error(e)
         if changed():
             logging.info("drawing changes")
             chess_draw.rectangle((10, 10, epd.width - 10, 50), fill = 255)
