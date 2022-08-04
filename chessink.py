@@ -111,7 +111,7 @@ try:
 
     epd.init(1) # into partial refresh mode
     while (True):
-        if movei == 4:
+        if movei >= 4:
             logging.info(f"black move: {move2str(move)}")
             if move2str(move) == 'a1a1':
                 logging.info("reset game")
