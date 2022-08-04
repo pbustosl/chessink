@@ -46,9 +46,13 @@ def on_button_c_pressed():
 def on_button_pressed(id):
     global mutex
     if mutex.acquire(False):
-        process_button_move(id)
-        time.sleep(0.15) # "pressed" triggers multiple events for more than 0.1s
-        mutex.release()
+        try:
+            process_button_move(id)
+            time.sleep(0.15) # "pressed" triggers multiple events for more than 0.1s
+        except Exception as e:
+            logging.error(e)
+        finally:
+            mutex.release()
 def process_button_move(button):
     global move
     global movei
