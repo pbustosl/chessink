@@ -1,0 +1,14 @@
+# location: /etc/systemd/system/chess_server.service
+[Unit]
+Description=Chess Server
+After=network.target
+
+[Service]
+User=pi
+Group=pi
+Type=simple
+Restart=no
+ExecStart=/usr/local/bin/chess_server.sh
+
+[Install]
+WantedBy=multi-user.target

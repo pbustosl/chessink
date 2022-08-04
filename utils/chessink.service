@@ -1,0 +1,14 @@
+# location: /etc/systemd/system/chessink.service
+[Unit]
+Description=ChessInk
+After=network.target
+
+[Service]
+User=pi
+Group=pi
+Type=simple
+Restart=no
+ExecStart=/usr/local/bin/chessink.sh
+
+[Install]
+WantedBy=multi-user.target
