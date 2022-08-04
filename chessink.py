@@ -7,7 +7,6 @@ from threading import Lock
 
 import sys
 import os
-picdir = os.path.join(os.environ["WAVESHARE_DIR"], 'pic')
 libdir = os.path.join(os.environ["WAVESHARE_DIR"], 'lib')
 sys.path.append(libdir)
 
@@ -103,7 +102,8 @@ try:
     
     # partial update
     logging.info("displayPartBaseImage")
-    font = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 24)
+    # https://ttfonts.net/font/11165_Courier.htm
+    font = ImageFont.truetype('/home/pi/utils/09809_COURIER.ttf', 28)
     chess_image = Image.new('1', (epd.width, epd.height), 255)  # 255: clear the frame
     epd.displayPartBaseImage(epd.getbuffer(chess_image))
     
@@ -117,8 +117,8 @@ try:
                 board_fen, cs_move = cs_play(board_fen, move2str(move))
                 move = [0,0,0,0]
                 movei = 0
-                chess_draw.rectangle((10, 50, 120, 100), fill = 255)
-                chess_draw.text((10, 50), f"bk: {cs_move}", font = font, fill = 0)
+                chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
+                chess_draw.text((10, 50), f"b: {cs_move}", font = font, fill = 0)
                 epd.displayPart(epd.getbuffer(chess_image))
             except Exception as e:
                 move = [0,0,0,0]
@@ -126,8 +126,8 @@ try:
                 logging.error(e)
         if changed():
             logging.info("drawing changes")
-            chess_draw.rectangle((10, 10, 120, 50), fill = 255)
-            chess_draw.text((10, 10), f"wt: {move2str(move)}", font = font, fill = 0)
+            chess_draw.rectangle((10, 10, epd.width - 10, 50), fill = 255)
+            chess_draw.text((10, 10), f"w: {move2str(move)}", font = font, fill = 0)
             epd.displayPart(epd.getbuffer(chess_image))
         else:
             logging.info("no changes, sleep...")
