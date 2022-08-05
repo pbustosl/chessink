@@ -2,6 +2,11 @@
 # -*- coding:utf-8 -*-
 
 CS_URL = 'http://localhost:9000'
+BUTTON_BCM = {
+    'A': 13, # +1
+    'B': 19, # +4
+    'C': 26, # next
+}
 
 from threading import Lock
 
@@ -36,31 +41,25 @@ def cs_play(board_fen, move):
         board_fen = res_data['board']
         return board_fen, res_data['move']
 
-def on_button_a_pressed():
-    on_button_pressed('a')
-def on_button_b_pressed():
-    on_button_pressed('b')
-def on_button_c_pressed():
-    on_button_pressed('c')
-
-def on_button_pressed(id):
+def on_button_pressed(button):
     global mutex
     if mutex.acquire(False):
         try:
-            process_button_move(id)
+            process_button_move(button)
             time.sleep(0.15) # "pressed" triggers multiple events for more than 0.1s
         except Exception as e:
             logging.error(e)
         finally:
             mutex.release()
 def process_button_move(button):
+    logging.info(button.pin.number)
     global move
     global movei
-    if button == 'c':
+    if button.pin.number == BUTTON_BCM['C']:
         if move[movei] != 0:
             movei += 1
     else:
-        incr = 1 if button == 'a' else 4
+        incr = 1 if button.pin.number == BUTTON_BCM['A'] else 4
         move[movei] = (move[movei] + incr) % 9
 def changed():
     global move
@@ -90,12 +89,9 @@ movei = 0
 mutex = Lock()
 board_fen = cs_start_board()
 
-button_a = Button(13)
-button_b = Button(19)
-button_c = Button(26)
-button_a.when_pressed = on_button_a_pressed
-button_b.when_pressed = on_button_b_pressed
-button_c.when_pressed = on_button_c_pressed
+for x in BUTTON_BCM:
+    button = Button(BUTTON_BCM[x])
+    button.when_pressed = on_button_pressed
 
 try:
     logging.info("init epd1in54_V2")
