@@ -20,7 +20,7 @@ class ChessEngine:
 
     def __init__(self, chess_server_url):
         self.chess_server_url = chess_server_url
-        self.board_fen = None
+        self.reset_board()
 
     def reset_board(self):
         with urllib.request.urlopen(self.chess_server_url) as response:
@@ -97,38 +97,60 @@ class Player:
         return ''.join(str(x) for x in aux)
 
 #####################################################
-
 import sys
 import os
 libdir = os.path.join(os.environ["WAVESHARE_DIR"], 'lib')
 sys.path.append(libdir)
-
 from waveshare_epd import epd1in54_V2
-import time
 from PIL import Image,ImageDraw,ImageFont
 
-chess_engine = ChessEngine(CHESS_SERVER_URL)
-chess_engine.reset_board()
+class ChessDisplay:
+    def __init__(self):
+        # https://ttfonts.net/font/11165_Courier.htm
+        self.font = ImageFont.truetype('/home/pi/utils/09809_COURIER.ttf', 28)
 
-player = Player()
+        logging.info("init epd1in54_V2")
+        self.epd = epd1in54_V2.EPD()
+        self.epd.init(0)
+        self.epd.Clear(0xFF)
+        # partial update
+        logging.info("displayPartBaseImage")
+        self.chess_image = Image.new('1', (self.epd.width, self.epd.height), 255)  # 255: clear the frame
+        self.epd.displayPartBaseImage(self.epd.getbuffer(self.chess_image))
+        self.chess_draw = ImageDraw.Draw(self.chess_image)
+        self.epd.init(1) # into partial refresh mode
+
+    def reset(self):
+        self.chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
+        epd.displayPart(epd.getbuffer(self.chess_image))
+
+    def show_engine_move(self, move):
+        self.chess_draw.rectangle((10, 50, self.epd.width - 10, 100), fill = 255)
+        self.chess_draw.text((10, 50), f"b: {move}", font = self.font, fill = 0)
+        self.epd.displayPart(self.epd.getbuffer(self.chess_image))
+
+    def show_player_move(self, move):
+        self.chess_draw.rectangle((10, 10, self.epd.width - 10, 50), fill = 255)
+        self.chess_draw.text((10, 10), f"w: {move}", font = self.font, fill = 0)
+        self.epd.displayPart(self.epd.getbuffer(self.chess_image))
+
+    def clear(self):
+        logging.info("clear...")
+        self.epd.init(0)
+        self.epd.Clear(0xFF)
+        logging.info("sleep...")
+        self.epd.sleep()
+
+    def exit(self):
+        epd1in54_V2.epdconfig.module_exit()
+
+#####################################################
+import time
 
 try:
-    logging.info("init epd1in54_V2")
-    
-    epd = epd1in54_V2.EPD()
-    epd.init(0)
-    epd.Clear(0xFF)
-    
-    # partial update
-    logging.info("displayPartBaseImage")
-    # https://ttfonts.net/font/11165_Courier.htm
-    font = ImageFont.truetype('/home/pi/utils/09809_COURIER.ttf', 28)
-    chess_image = Image.new('1', (epd.width, epd.height), 255)  # 255: clear the frame
-    epd.displayPartBaseImage(epd.getbuffer(chess_image))
-    
-    chess_draw = ImageDraw.Draw(chess_image)
-
-    epd.init(1) # into partial refresh mode
+    chess_engine = ChessEngine(CHESS_SERVER_URL)
+    player = Player()
+    display = ChessDisplay()
     while (True):
         if player.moved():
             logging.info(f"black move: {player.get_move()}")
@@ -136,38 +158,25 @@ try:
                 logging.info("reset game")
                 player.reset()
                 chess_engine.reset_board()
-                chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
-                epd.displayPart(epd.getbuffer(chess_image))
+                display.reset()
             else:
                 try:
-                    engine_move = chess_engine.play(player.get_move())
+                    move = chess_engine.play(player.get_move())
                     player.reset()
-                    chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
-                    chess_draw.text((10, 50), f"b: {engine_move}", font = font, fill = 0)
-                    epd.displayPart(epd.getbuffer(chess_image))
+                    display.show_engine_move(move)
                 except Exception as e:
                     player.reset()
                     logging.error(e)
         if player.playing():
             logging.info("drawing changes")
-            chess_draw.rectangle((10, 10, epd.width - 10, 50), fill = 255)
-            chess_draw.text((10, 10), f"w: {player.get_move()}", font = font, fill = 0)
-            epd.displayPart(epd.getbuffer(chess_image))
+            display.show_player_move(player.get_move())
         else:
             logging.info("no changes, sleep...")
             time.sleep(1)
-
-    logging.info("clear...")
-    epd.init(0)
-    epd.Clear(0xFF)
-
-    logging.info("sleep...")
-    epd.sleep()
-
+    display.clear()
 except IOError as e:
     logging.info(e)
-    
-except KeyboardInterrupt:    
+except KeyboardInterrupt:
     logging.info("ctrl + c:")
-    epd1in54_V2.epdconfig.module_exit()
+    display.exit()
     exit()
