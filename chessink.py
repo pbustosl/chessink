@@ -1,12 +1,40 @@
 #!/usr/bin/python
 # -*- coding:utf-8 -*-
 
-CS_URL = 'http://localhost:9000'
+CHESS_SERVER_URL = 'http://localhost:9000'
+CHESS_SERVER_MAX_TIME_S = 1.0
 BUTTON_BCM = {
     'A': 13, # +1
     'B': 19, # +4
     'C': 26, # next
 }
+
+#####################################################
+import urllib.request
+import json
+
+class ChessEngine:
+
+    def __init__(self, chess_server_url):
+        self.chess_server_url = chess_server_url
+        self.board_fen = None
+
+    def reset_board(self):
+        with urllib.request.urlopen(self.chess_server_url) as response:
+            body = response.read()
+            res_data = json.loads(body)
+            self.board_fen = res_data['board']
+
+    def play(self, move):
+        req_data = {'board': self.board_fen, 'move': move, 'max_time_s': CHESS_SERVER_MAX_TIME_S }
+        req =  urllib.request.Request(self.chess_server_url, data=json.dumps(req_data).encode('utf-8'))
+        with urllib.request.urlopen(req) as response:
+            body = response.read()
+            res_data = json.loads(body)
+            self.board_fen = res_data['board']
+            return res_data['move']
+
+#####################################################
 
 from threading import Lock
 
@@ -24,22 +52,6 @@ from PIL import Image,ImageDraw,ImageFont
 import traceback
 
 logging.basicConfig(level=logging.DEBUG)
-
-import urllib.request
-import json
-def cs_start_board():
-    with urllib.request.urlopen(CS_URL) as response:
-        body = response.read()
-        res_data = json.loads(body)
-        return res_data['board']
-def cs_play(board_fen, move):
-    req_data = {'board': board_fen, 'move': move, 'max_time_s': 1.0 }
-    req =  urllib.request.Request(CS_URL, data=json.dumps(req_data).encode('utf-8'))
-    with urllib.request.urlopen(req) as response:
-        body = response.read()
-        res_data = json.loads(body)
-        board_fen = res_data['board']
-        return board_fen, res_data['move']
 
 def on_button_pressed(button):
     global mutex
@@ -83,11 +95,12 @@ def move2str(move): # e.g. 4244 -> d2d4
     return ''.join(str(x) for x in aux)
 
 
+chess_engine = ChessEngine(CHESS_SERVER_URL)
+chess_engine.reset_board()
 move = [0,0,0,0]
 movet = None
 movei = 0
 mutex = Lock()
-board_fen = cs_start_board()
 
 for x in BUTTON_BCM:
     button = Button(BUTTON_BCM[x])
@@ -118,16 +131,16 @@ try:
                 move = [0,0,0,0]
                 movet = None
                 movei = 0
-                board_fen = cs_start_board()
+                chess_engine.reset_board()
                 chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
                 epd.displayPart(epd.getbuffer(chess_image))
             else:
                 try:
-                    board_fen, cs_move = cs_play(board_fen, move2str(move))
+                    engine_move = chess_engine.play(move2str(move))
                     move = [0,0,0,0]
                     movei = 0
                     chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
-                    chess_draw.text((10, 50), f"b: {cs_move}", font = font, fill = 0)
+                    chess_draw.text((10, 50), f"b: {engine_move}", font = font, fill = 0)
                     epd.displayPart(epd.getbuffer(chess_image))
                 except Exception as e:
                     move = [0,0,0,0]
