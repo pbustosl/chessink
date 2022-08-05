@@ -9,6 +9,9 @@ BUTTON_BCM = {
     'C': 26, # next
 }
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 #####################################################
 import urllib.request
 import json
@@ -35,76 +38,79 @@ class ChessEngine:
             return res_data['move']
 
 #####################################################
-
 from threading import Lock
+from gpiozero import Button
+
+class Player:
+
+    def __init__(self):
+        self.reset()
+        self.mutex = Lock()
+        for x in BUTTON_BCM:
+            button = Button(BUTTON_BCM[x])
+            button.when_pressed = self.on_button_pressed
+
+    def reset(self):
+        self.move = [0,0,0,0]
+        self.movet = None
+        self.movei = 0
+
+    def on_button_pressed(self, button):
+        if self.mutex.acquire(False):
+            try:
+                self.process_button_move(button)
+                time.sleep(0.15) # button pressed triggers multiple events for more than 0.1s, skip them
+            except Exception as e:
+                logging.error(e)
+            finally:
+                self.mutex.release()
+
+    def process_button_move(self, button):
+        logging.info(f"button pressed: {button.pin.number}")
+        if button.pin.number == BUTTON_BCM['C']:
+            if self.move[self.movei] != 0:
+                self.movei += 1
+        else:
+            incr = 1 if button.pin.number == BUTTON_BCM['A'] else 4
+            self.move[self.movei] = (self.move[self.movei] + incr) % 9
+
+    def playing(self):
+        res = (self.move != self.movet)
+        if res:
+            self.movet = self.move.copy()
+        return res
+
+    def moved(self):
+        return self.movei >= 4
+
+    def get_move(self):
+        # e.g. 4240 -> d2d_
+        aux = [0,0,0,0]
+        for i, x in enumerate(self.move):
+            if x == 0:
+                aux[i] = '_'
+            else:
+                if i % 2 == 0:
+                    aux[i] = chr(ord('a')+x-1)
+                else:
+                    aux[i] = x
+        return ''.join(str(x) for x in aux)
+
+#####################################################
 
 import sys
 import os
 libdir = os.path.join(os.environ["WAVESHARE_DIR"], 'lib')
 sys.path.append(libdir)
 
-from gpiozero import Button
-
-import logging
 from waveshare_epd import epd1in54_V2
 import time
 from PIL import Image,ImageDraw,ImageFont
-import traceback
-
-logging.basicConfig(level=logging.DEBUG)
-
-def on_button_pressed(button):
-    global mutex
-    if mutex.acquire(False):
-        try:
-            process_button_move(button)
-            time.sleep(0.15) # "pressed" triggers multiple events for more than 0.1s
-        except Exception as e:
-            logging.error(e)
-        finally:
-            mutex.release()
-def process_button_move(button):
-    logging.info(button.pin.number)
-    global move
-    global movei
-    if button.pin.number == BUTTON_BCM['C']:
-        if move[movei] != 0:
-            movei += 1
-    else:
-        incr = 1 if button.pin.number == BUTTON_BCM['A'] else 4
-        move[movei] = (move[movei] + incr) % 9
-def changed():
-    global move
-    global movet
-    res = (move != movet)
-    if res:
-        movet = move.copy()
-    return res
-
-
-def move2str(move): # e.g. 4244 -> d2d4
-    aux = [0,0,0,0]
-    for i, x in enumerate(move):
-        if x == 0:
-            aux[i] = '_'
-        else:
-            if i % 2 == 0:
-                aux[i] = chr(ord('a')+x-1)
-            else:
-                aux[i] = x
-    return ''.join(str(x) for x in aux)
-
 
 chess_engine = ChessEngine(CHESS_SERVER_URL)
 chess_engine.reset_board()
-move = [0,0,0,0]
-movet = None
-movei = 0
-mutex = Lock()
 
-for x in BUTTON_BCM:
-    button = Button(BUTTON_BCM[x])
-    button.when_pressed = on_button_pressed
+player = Player()
 
 try:
     logging.info("init epd1in54_V2")
@@ -124,32 +130,28 @@ try:
 
     epd.init(1) # into partial refresh mode
     while (True):
-        if movei >= 4:
-            logging.info(f"black move: {move2str(move)}")
-            if move2str(move) == 'a1a1':
+        if player.moved():
+            logging.info(f"black move: {player.get_move()}")
+            if player.get_move() == 'a1a1':
                 logging.info("reset game")
-                move = [0,0,0,0]
-                movet = None
-                movei = 0
+                player.reset()
                 chess_engine.reset_board()
                 chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
                 epd.displayPart(epd.getbuffer(chess_image))
             else:
                 try:
-                    engine_move = chess_engine.play(move2str(move))
-                    move = [0,0,0,0]
-                    movei = 0
+                    engine_move = chess_engine.play(player.get_move())
+                    player.reset()
                     chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
                     chess_draw.text((10, 50), f"b: {engine_move}", font = font, fill = 0)
                     epd.displayPart(epd.getbuffer(chess_image))
                 except Exception as e:
-                    move = [0,0,0,0]
-                    movei = 0
+                    player.reset()
                     logging.error(e)
-        if changed():
+        if player.playing():
             logging.info("drawing changes")
             chess_draw.rectangle((10, 10, epd.width - 10, 50), fill = 255)
-            chess_draw.text((10, 10), f"w: {move2str(move)}", font = font, fill = 0)
+            chess_draw.text((10, 10), f"w: {player.get_move()}", font = font, fill = 0)
             epd.displayPart(epd.getbuffer(chess_image))
         else:
             logging.info("no changes, sleep...")
