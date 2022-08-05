@@ -23,12 +23,14 @@ class ChessEngine:
         self.reset_board()
 
     def reset_board(self):
+        logging.info(f"GET {self.chess_server_url}")
         with urllib.request.urlopen(self.chess_server_url) as response:
             body = response.read()
             res_data = json.loads(body)
             self.board_fen = res_data['board']
 
     def play(self, move):
+        logging.info(f"POST {self.chess_server_url}")
         req_data = {'board': self.board_fen, 'move': move, 'max_time_s': CHESS_SERVER_MAX_TIME_S }
         req =  urllib.request.Request(self.chess_server_url, data=json.dumps(req_data).encode('utf-8'))
         with urllib.request.urlopen(req) as response:
@@ -44,15 +46,15 @@ from gpiozero import Button
 class Player:
 
     def __init__(self):
-        self.reset()
+        self.reset_buttons()
         self.mutex = Lock()
         for x in BUTTON_BCM:
             button = Button(BUTTON_BCM[x])
             button.when_pressed = self.on_button_pressed
 
-    def reset(self):
+    def reset_buttons(self):
         self.move = [0,0,0,0]
-        self.movet = None
+        self.last_seen = None
         self.movei = 0
 
     def on_button_pressed(self, button):
@@ -74,10 +76,10 @@ class Player:
             incr = 1 if button.pin.number == BUTTON_BCM['A'] else 4
             self.move[self.movei] = (self.move[self.movei] + incr) % 9
 
-    def playing(self):
-        res = (self.move != self.movet)
+    def is_moving(self):
+        res = (self.move != self.last_seen)
         if res:
-            self.movet = self.move.copy()
+            self.last_seen = self.move.copy()
         return res
 
     def moved(self):
@@ -109,24 +111,17 @@ class ChessDisplay:
         # https://ttfonts.net/font/11165_Courier.htm
         self.font = ImageFont.truetype('/home/pi/utils/09809_COURIER.ttf', 28)
 
-        logging.info("init epd1in54_V2")
         self.epd = epd1in54_V2.EPD()
         self.epd.init(0)
         self.epd.Clear(0xFF)
         # partial update
-        logging.info("displayPartBaseImage")
         self.chess_image = Image.new('1', (self.epd.width, self.epd.height), 255)  # 255: clear the frame
         self.epd.displayPartBaseImage(self.epd.getbuffer(self.chess_image))
         self.chess_draw = ImageDraw.Draw(self.chess_image)
         self.epd.init(1) # into partial refresh mode
 
     def reset(self):
-        self.chess_draw.rectangle((10, 50, epd.width - 10, 100), fill = 255)
-        epd.displayPart(epd.getbuffer(self.chess_image))
-
-    def show_engine_move(self, move):
-        self.chess_draw.rectangle((10, 50, self.epd.width - 10, 100), fill = 255)
-        self.chess_draw.text((10, 50), f"b: {move}", font = self.font, fill = 0)
+        self.chess_draw.rectangle((10, 10, self.epd.width - 10, 100), fill = 255)
         self.epd.displayPart(self.epd.getbuffer(self.chess_image))
 
     def show_player_move(self, move):
@@ -134,11 +129,14 @@ class ChessDisplay:
         self.chess_draw.text((10, 10), f"w: {move}", font = self.font, fill = 0)
         self.epd.displayPart(self.epd.getbuffer(self.chess_image))
 
+    def show_engine_move(self, move):
+        self.chess_draw.rectangle((10, 50, self.epd.width - 10, 100), fill = 255)
+        self.chess_draw.text((10, 50), f"b: {move}", font = self.font, fill = 0)
+        self.epd.displayPart(self.epd.getbuffer(self.chess_image))
+
     def clear(self):
-        logging.info("clear...")
         self.epd.init(0)
         self.epd.Clear(0xFF)
-        logging.info("sleep...")
         self.epd.sleep()
 
     def exit(self):
@@ -153,21 +151,22 @@ try:
     display = ChessDisplay()
     while (True):
         if player.moved():
-            logging.info(f"black move: {player.get_move()}")
+            logging.info(f"player move: {player.get_move()}")
             if player.get_move() == 'a1a1':
                 logging.info("reset game")
-                player.reset()
+                player.reset_buttons()
                 chess_engine.reset_board()
                 display.reset()
             else:
                 try:
                     move = chess_engine.play(player.get_move())
-                    player.reset()
+                    logging.info(f"chess_engine move: {move}")
+                    player.reset_buttons()
                     display.show_engine_move(move)
                 except Exception as e:
-                    player.reset()
+                    player.reset_buttons()
                     logging.error(e)
-        if player.playing():
+        if player.is_moving():
             logging.info("drawing changes")
             display.show_player_move(player.get_move())
         else:
